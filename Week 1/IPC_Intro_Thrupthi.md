@@ -4,7 +4,7 @@
 
 IPC (Inter-Process Communication) is a mechanism used by processes to send and receive data or messages while they are running.
 
-It is a mechanism provided by an operating system that allows two or more processes to communicate and exchange data with each other.
+It is provided by an operating system that allows two or more processes to communicate and exchange data with each other.
 A process is a program that is currently running.
 
 Example:
@@ -34,35 +34,16 @@ Suppose a music player and a notification service are running at the same time. 
 
 (5) Helps complete complex tasks by dividing work among processes.
 
-## 4. Basic Types of IPC:
+## 4. Overview of IPC:
 
-The basic types of IPC are:
-
-1. Pipes:
-   - Used for communication between processes.
-   - Data flows through a pipe from one process
-     to another.
-
-2. Message Queues:
-   - Allow processes to exchange messages.
-   - Messages can be stored until the receiving
-     process is ready to receive them.
-
-3. Shared Memory:
-   - Allows multiple processes to access a common
-     memory area.
-   - It is generally faster because data does not
-     need to be repeatedly copied.
-
-4. Semaphores:
-   - Used mainly for process synchronization.
-   - They help control access to shared resources.
-
-5. Sockets:
-   - Allow communication between processes.
-   - Can be used between processes on the same
-     computer or on different computers
-
+- Two or more processes need to exchange information.
+- Another process receives and uses that information.
+- The operating system helps manage this communication.
+- IPC allows processes to coordinate their activities.
+- Communication can happen between processes running on the same computer.
+- IPC is important when multiple processes work together.
+- It helps processes share information and resources safely.
+  
 # 5. EXAMPLES OF IPC IN REAL SYSTEMS:
 
 * A parent process communicating with a child
