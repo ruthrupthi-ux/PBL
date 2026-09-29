@@ -44,7 +44,7 @@ Suppose a music player and a notification service are running at the same time. 
 - IPC is important when multiple processes work together.
 - It helps processes share information and resources safely.
   
-# 5. EXAMPLES OF IPC IN REAL SYSTEMS:
+# 5. Examples of IPC in real systems:
 
 * A parent process communicating with a child
   process using a pipe.
