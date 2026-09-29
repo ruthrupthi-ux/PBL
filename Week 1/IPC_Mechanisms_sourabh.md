@@ -1,46 +1,76 @@
 # **IPC MECHANISMS**
 
-### **1. Socket Programming**
 
-Socket programming is an IPC mechanism used for communication between two processes. The processes can be on the same computer or on different computers through a network.
+IPC provides different mechanisms for processes to communicate.
+Each mechanism works differently depending on how data needs to
+be shared, transferred, or synchronized.
 
-#### **Basic Working**
-1. Server creates a socket.
-2. Server binds the socket to an address and port.
-3. Server waits for a connection.
-4. Client creates a socket and connects to the server.
-5. Client and server exchange data.
-6. Sockets are closed after communication.
+### **Main IPC Mechanisms**
 
-**Example:**  
-Client sends a message → Server receives it → Server sends a reply.
-
----
-
-### **2. Shared Memory**
-
-Shared memory is an IPC mechanism where two or more processes use the same area of memory to exchange data.
-
-#### **Basic Working**
-1. A shared memory area is created.
-2. Processes attach to the shared memory.
-3. One process writes data.
-4. Another process reads the data.
-5. Processes detach from the shared memory.
-
-**Example:**  
-Process A writes **"Hello"** → Process B reads **"Hello"**.
+- **Pipes**
+- **Named Pipes (FIFO)**
+- **Message Queues**
+- **Shared Memory**
+- **Semaphores**
+- **Signals**
+- **Sockets**
 
 ---
 
-### **3. Comparison**
+## **1. Pipes**
 
-| **Socket Programming** | **Shared Memory** |
+- A pipe provides a communication channel between processes.
+- One process writes data and another process reads the data.
+- It is mainly used for communication between related processes.
+
+## **2. Named Pipes (FIFO)**
+
+- A Named Pipe is a pipe that has a specific name.
+- It allows unrelated processes to communicate with each other.
+- Data is read in the same order in which it is written.
+
+## **3. Message Queues**
+
+- A message queue stores messages sent by processes.
+- A receiving process can read the messages from the queue.
+- It is useful when processes need to exchange separate messages.
+
+## **4. Shared Memory**
+
+- Shared memory allows processes to access a common memory area.
+- One process can write data while another process can read it.
+- It provides fast communication between processes.
+
+## **5. Semaphores**
+
+- A semaphore is used to control access to shared resources.
+- It helps prevent multiple processes from accessing a resource incorrectly.
+- It is mainly used for process synchronization.
+
+## **6. Signals**
+
+- A signal is a notification sent to a process.
+- It informs a process that a particular event has occurred.
+- It is mainly used for process control and notifications.
+
+## **7. Sockets**
+
+- A socket provides an endpoint for communication between processes.
+- It can be used on the same computer or between different computers.
+- It is commonly used for client-server and network communication.
+
+---
+
+## **Simple Comparison**
+
+| **Mechanism** | **Main Function** |
 |---|---|
-| Uses sockets for communication | Uses a common memory area |
-| Can work over a network | Mainly used on the same system |
-| Suitable for client-server communication | Suitable for fast data sharing |
+| **Pipe** | Data communication |
+| **Named Pipe** | Unrelated process communication |
+| **Message Queue** | Message exchange |
+| **Shared Memory** | Fast data sharing |
+| **Semaphore** | Synchronization |
+| **Signal** | Notification |
+| **Socket** | Local and network communication |
 
-### **Conclusion**
 
-**Socket Programming** and **Shared Memory** are important **IPC mechanisms**. Sockets are useful for communication over networks, while shared memory provides fast communication between processes.
