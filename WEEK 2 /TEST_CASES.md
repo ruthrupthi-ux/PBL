@@ -1,4 +1,4 @@
-# IPC Test Cases – Week 4
+# IPC Test Cases – Week 2
 
 | ID | Test case | Input / action | Expected result |
 |---|---|---|---|
