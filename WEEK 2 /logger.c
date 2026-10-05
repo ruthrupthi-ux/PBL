@@ -2,11 +2,15 @@
 #include <stdlib.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <string.h>
+#include <mqueue.h>
+#include "ipc_common.h"
 
 #define LOG_DIR "logs"
 #define LOG_FILE "logs/simulator.log"
 
-static void write_log(const char *level, const char *message) {
+static void write_log(const char *level, const char *message)
+{
     FILE *file;
     time_t now;
     struct tm *local_time;
@@ -16,42 +20,56 @@ static void write_log(const char *level, const char *message) {
 
     file = fopen(LOG_FILE, "a");
     if (file == NULL) {
-        perror("Unable to open log file");
+        perror("LOGGER: Unable to open log file");
         return;
     }
 
     now = time(NULL);
     local_time = localtime(&now);
 
-    if (local_time != NULL) {
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S",
-                 local_time);
-    } else {
+    if (local_time != NULL)
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", local_time);
+    else
         snprintf(timestamp, sizeof(timestamp), "unknown-time");
-    }
 
     fprintf(file, "%s | %s | %s\n", timestamp, level, message);
     fclose(file);
 }
 
-void log_info(const char *message) {
-    write_log("INFO", message);
-}
+int main(void)
+{
+    mqd_t from_core = mq_open(CORE_TO_LOG_QUEUE, O_RDONLY);
+    if (from_core == (mqd_t)-1) {
+        perror("LOGGER: unable to open IPC queue");
+        return 1;
+    }
 
-void log_warning(const char *message) {
-    write_log("WARNING", message);
-}
+    printf("LOGGER PROCESS STARTED\n");
+    printf("Waiting for events from Core...\n");
 
-void log_error(const char *message) {
-    write_log("ERROR", message);
-}
+    LogMessage log;
 
-int main(void) {
-    log_info("Logger started successfully.");
-    log_info("Sample execution event recorded.");
-    log_warning("Sample warning recorded.");
-    log_error("Sample error recorded.");
+    while (1) {
+        if (mq_receive(from_core, (char *)&log, sizeof(log), NULL) == -1) {
+            perror("LOGGER: mq_receive");
+            break;
+        }
 
-    printf("Sample logs written to %s\n", LOG_FILE);
+        const char *level = "INFO";
+        if (log.level == 1) level = "WARNING";
+        else if (log.level == 2) level = "ERROR";
+
+        char message[IPC_TEXT_SIZE + 64];
+        snprintf(message, sizeof(message), "Process %d: %s",
+                 log.process_id, log.message);
+
+        write_log(level, message);
+        printf("[LOGGER] %s | %s\n", level, message);
+
+        if (strstr(log.message, "shutdown request") != NULL)
+            break;
+    }
+
+    mq_close(from_core);
     return 0;
 }

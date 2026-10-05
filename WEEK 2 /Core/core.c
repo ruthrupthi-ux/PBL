@@ -1,77 +1,123 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <mqueue.h>
+#include "ipc_common.h"
 
 #include "cpu.c"
 #include "memory.c"
 #include "stack.c"
 #include "queue.c"
 
-int main()
+static void send_response(mqd_t ui_queue, int process_id, int status, const char *message)
+{
+    CoreResponse response = {0};
+    response.process_id = process_id;
+    response.status = status;
+    strncpy(response.message, message, IPC_TEXT_SIZE - 1);
+
+    if (mq_send(ui_queue, (const char *)&response, sizeof(response), 0) == -1)
+        perror("CORE: unable to send response to UI");
+}
+
+static void send_log(mqd_t log_queue, int process_id, int level, const char *message)
+{
+    LogMessage log = {0};
+    log.process_id = process_id;
+    log.level = level;
+    strncpy(log.message, message, IPC_TEXT_SIZE - 1);
+
+    if (mq_send(log_queue, (const char *)&log, sizeof(log), 0) == -1)
+        perror("CORE: unable to send log");
+}
+
+int main(void)
 {
     CPU cpu;
     Memory mem;
     Stack stack;
     Queue queue;
 
-    char instruction[50];
-    char operation[20];
-
     cpu_init(&cpu);
     memory_init(&mem);
     stack_init(&stack);
     queue_init(&queue);
 
-    while (1)
-    {
-        printf("\nEnter instruction: ");
+    mqd_t from_ui = mq_open(UI_TO_CORE_QUEUE, O_RDONLY);
+    mqd_t to_ui = mq_open(CORE_TO_UI_QUEUE, O_WRONLY);
+    mqd_t to_log = mq_open(CORE_TO_LOG_QUEUE, O_WRONLY);
 
-        fgets(instruction, sizeof(instruction), stdin);
+    if (from_ui == (mqd_t)-1 || to_ui == (mqd_t)-1 || to_log == (mqd_t)-1) {
+        perror("CORE: unable to open IPC queues");
+        return 1;
+    }
 
-        instruction[strcspn(instruction, "\n")] = '\0';
+    printf("CORE PROCESS STARTED\n");
+    printf("Waiting for instructions from UI...\n");
 
-        sscanf(instruction, "%s", operation);
+    UIMessage msg;
 
-        if (strcmp(operation, "LOAD") == 0 ||
-            strcmp(operation, "ADD") == 0 ||
-            strcmp(operation, "SUB") == 0 ||
-            strcmp(operation, "MUL") == 0 ||
-            strcmp(operation, "DIV") == 0 ||
-            strcmp(operation, "PRINT") == 0)
-        {
-            execute(&cpu, instruction);
-        }
-
-        else if (strcmp(operation, "STORE") == 0 ||
-                 strcmp(operation, "READ") == 0)
-        {
-            execute_memory(&mem, instruction);
-        }
-
-        else if (strcmp(operation, "PUSH") == 0 ||
-                 strcmp(operation, "POP") == 0 ||
-                 strcmp(operation, "SPEEK") == 0)
-        {
-            execute_stack(&stack, instruction);
-        }
-
-        else if (strcmp(operation, "ENQUEUE") == 0 ||
-                 strcmp(operation, "DEQUEUE") == 0 ||
-                 strcmp(operation, "QPEEK") == 0)
-        {
-            execute_queue(&queue, instruction);
-        }
-
-        else if (strcmp(operation, "HALT") == 0)
-        {
-            printf("\nCORE PROCESS HALTED\n");
+    while (1) {
+        if (mq_receive(from_ui, (char *)&msg, sizeof(msg), NULL) == -1) {
+            perror("CORE: mq_receive");
             break;
         }
 
-        else
-        {
-            printf("Invalid instruction\n");
+        if (msg.command == 2) {
+            send_log(to_log, msg.process_id, 0, "Core process received shutdown request.");
+            break;
+        }
+
+        char operation[20] = {0};
+        if (sscanf(msg.instruction, "%19s", operation) != 1) {
+            send_response(to_ui, msg.process_id, 1, "Empty instruction.");
+            send_log(to_log, msg.process_id, 2, "Empty instruction received.");
+            continue;
+        }
+
+        int known = 0;
+        if (!strcmp(operation, "LOAD") || !strcmp(operation, "ADD") ||
+            !strcmp(operation, "SUB") || !strcmp(operation, "MUL") ||
+            !strcmp(operation, "DIV") || !strcmp(operation, "PRINT")) {
+            known = 1;
+            execute(&cpu, msg.instruction);
+        }
+        else if (!strcmp(operation, "STORE") || !strcmp(operation, "READ")) {
+            known = 1;
+            execute_memory(&mem, msg.instruction);
+        }
+        else if (!strcmp(operation, "PUSH") || !strcmp(operation, "POP") ||
+                 !strcmp(operation, "SPEEK")) {
+            known = 1;
+            execute_stack(&stack, msg.instruction);
+        }
+        else if (!strcmp(operation, "ENQUEUE") || !strcmp(operation, "DEQUEUE") ||
+                 !strcmp(operation, "QPEEK")) {
+            known = 1;
+            execute_queue(&queue, msg.instruction);
+        }
+        else if (!strcmp(operation, "HALT")) {
+            known = 1;
+            printf("CORE PROCESS HALTED\n");
+            send_response(to_ui, msg.process_id, 0, "HALT received. Core is stopping.");
+            send_log(to_log, msg.process_id, 0, "HALT instruction received.");
+            send_log(to_log, msg.process_id, 0, "Core shutdown request.");
+            break;
+        }
+
+        if (known) {
+            char result[IPC_TEXT_SIZE];
+            snprintf(result, sizeof(result), "Instruction executed: %s", msg.instruction);
+            send_response(to_ui, msg.process_id, 0, result);
+            send_log(to_log, msg.process_id, 0, result);
+        } else {
+            send_response(to_ui, msg.process_id, 1, "Invalid instruction.");
+            send_log(to_log, msg.process_id, 2, "Invalid instruction received.");
         }
     }
 
+    mq_close(from_ui);
+    mq_close(to_ui);
+    mq_close(to_log);
     return 0;
 }
