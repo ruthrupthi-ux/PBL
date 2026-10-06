@@ -1,126 +1,182 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <errno.h>
+#include <unistd.h>
 
-#define FIFO_NAME "simulator_log_fifo"
-#define BUFFER_SIZE 512
+#define FIFO_PATH "/tmp/simulator_log_fifo"
+#define EXECUTION_LOG "execution.log"
+#define ERROR_LOG "error.log"
+#define BUFFER_SIZE 1024
 
-void get_time(char *buffer, int size)
+static volatile sig_atomic_t running = 1;
+
+static void handle_signal(int signal_number)
 {
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-
-    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", t);
+    (void)signal_number;
+    running = 0;
 }
 
-void write_log(const char *filename, const char *message)
+static void get_timestamp(char *buffer, size_t size)
 {
-    FILE *file = fopen(filename, "a");
+    time_t now = time(NULL);
+    struct tm local_time;
 
+    localtime_r(&now, &local_time);
+    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", &local_time);
+}
+
+static void write_log(const char *level, const char *message)
+{
+    char timestamp[32];
+    const char *filename = EXECUTION_LOG;
+
+    get_timestamp(timestamp, sizeof(timestamp));
+
+    if (strcmp(level, "ERROR") == 0)
+        filename = ERROR_LOG;
+
+    FILE *file = fopen(filename, "a");
     if (file == NULL)
     {
-        perror("Unable to open log file");
+        perror("Logger: fopen");
         return;
     }
 
-    char time_buffer[30];
-    get_time(time_buffer, sizeof(time_buffer));
-
-    fprintf(file, "[%s] %s\n", time_buffer, message);
+    fprintf(file, "[%s] [%s] %s\n", timestamp, level, message);
     fclose(file);
+
+    /* Also display the received log on the terminal. */
+    printf("[%s] [%s] %s\n", timestamp, level, message);
+    fflush(stdout);
 }
 
-int main()
+static void process_message(char *message)
 {
-    int fd;
-    char buffer[BUFFER_SIZE];
+    /* Remove newline characters. */
+    message[strcspn(message, "\r\n")] = '\0';
 
-    printf("=== Student 3: Logging Process ===\n");
+    if (message[0] == '\0')
+        return;
 
-    /* Create FIFO if it does not already exist */
-    if (mkfifo(FIFO_NAME, 0666) == -1 && errno != EEXIST)
+    char *separator = strchr(message, '|');
+
+    if (separator == NULL)
     {
-        perror("mkfifo");
-        return 1;
+        write_log("INFO", message);
+        return;
     }
 
-    printf("Waiting for messages from Core Process...\n");
+    *separator = '\0';
 
-    /* Open FIFO for reading */
-    fd = open(FIFO_NAME, O_RDONLY);
+    const char *level = message;
+    const char *text = separator + 1;
 
-    if (fd == -1)
+    if (strcmp(level, "INFO") != 0 &&
+        strcmp(level, "ERROR") != 0 &&
+        strcmp(level, "WARNING") != 0)
     {
-        perror("FIFO open");
-        return 1;
+        level = "INFO";
     }
 
-    while (1)
+    write_log(level, text);
+}
+
+int main(void)
+{
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+
+    /*
+     * Create the FIFO if it does not already exist.
+     * 0666 allows the user/processes to read and write according to
+     * the system's umask.
+     */
+    if (mkfifo(FIFO_PATH, 0666) == -1 && errno != EEXIST)
     {
-        memset(buffer, 0, sizeof(buffer));
+        perror("Logger: mkfifo");
+        return EXIT_FAILURE;
+    }
 
-        int bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    printf("========================================\n");
+    printf(" Student 3 - Logging Process\n");
+    printf(" FIFO: %s\n", FIFO_PATH);
+    printf(" Waiting for log messages...\n");
+    printf(" Press Ctrl+C to stop.\n");
+    printf("========================================\n");
 
-        if (bytes_read > 0)
+    while (running)
+    {
+        /*
+         * Opening the FIFO for reading blocks until another process opens
+         * it for writing. This keeps the logger as an independent process.
+         */
+        int fd = open(FIFO_PATH, O_RDONLY);
+
+        if (fd == -1)
         {
-            buffer[bytes_read] = '\0';
-
-            printf("Received: %s", buffer);
-
-            /*
-             * Messages beginning with ERROR are stored
-             * in the separate error log.
-             */
-            if (strncmp(buffer, "ERROR:", 6) == 0)
-            {
-                write_log("error.log", buffer);
-            }
-            else
-            {
-                write_log("execution.log", buffer);
-            }
-
-            /*
-             * The Core/UI process can send EXIT
-             * when the simulator is finished.
-             */
-            if (strncmp(buffer, "EXIT", 4) == 0)
-            {
-                printf("Logging process stopping...\n");
+            if (errno == EINTR && !running)
                 break;
-            }
-        }
-        else if (bytes_read == 0)
-        {
-            /*
-             * Writer closed the FIFO.
-             * Reopen it so the logger can receive future messages.
-             */
-            close(fd);
-            fd = open(FIFO_NAME, O_RDONLY);
 
-            if (fd == -1)
+            perror("Logger: open FIFO");
+            continue;
+        }
+
+        char buffer[BUFFER_SIZE];
+        ssize_t bytes_read;
+        size_t message_length = 0;
+
+        while (running &&
+               (bytes_read = read(fd, buffer + message_length,
+                                  sizeof(buffer) - message_length - 1)) > 0)
+        {
+            message_length += (size_t)bytes_read;
+            buffer[message_length] = '\0';
+
+            char *start = buffer;
+            char *newline;
+
+            while ((newline = strchr(start, '\n')) != NULL)
             {
-                perror("FIFO reopen");
-                break;
+                *newline = '\0';
+                process_message(start);
+                start = newline + 1;
+            }
+
+            /*
+             * Keep an incomplete final message for the next read.
+             */
+            if (start != buffer)
+            {
+                size_t remaining = strlen(start);
+                memmove(buffer, start, remaining);
+                message_length = remaining;
+                buffer[message_length] = '\0';
+            }
+
+            if (message_length == sizeof(buffer) - 1)
+            {
+                /* Prevent an oversized message from filling the buffer. */
+                process_message(buffer);
+                message_length = 0;
+                buffer[0] = '\0';
             }
         }
-        else
-        {
-            perror("read");
-            break;
-        }
+
+        close(fd);
+
+        if (bytes_read == -1 && errno != EINTR)
+            perror("Logger: read FIFO");
     }
 
-    close(fd);
-    unlink(FIFO_NAME);
+    unlink(FIFO_PATH);
+    printf("\nLogger stopped.\n");
 
-    printf("Logs saved successfully.\n");
-
-    return 0;
+    return EXIT_SUCCESS;
 }
