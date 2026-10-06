@@ -12,9 +12,25 @@ processes of the simulator:
 The integrated system should work as one multi-process simulator
 using POSIX Inter-Process Communication (IPC).
 
+
+## 2. Integration Flow
+
+UI → Core → Logger
+
+## 3. Integration Work
+
+- Integrated the UI, Core and Logger processes.
+- Used `launcher.c` to start all three processes.
+- Connected the processes using IPC.
+- Tested communication between UI and Core.
+- Tested logging from Core to Logger.
+- Tested the complete simulator.
+- Verified that all processes stop correctly.
+
+
 ---
 
-## 2. System Architecture
+## 4. System Architecture
 
 ```text
                     ┌───────────────────────┐
