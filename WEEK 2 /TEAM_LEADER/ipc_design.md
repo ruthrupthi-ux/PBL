@@ -2,41 +2,37 @@
 
 ## Selected IPC Mechanism
 
-The project uses **FIFO (Named Pipe)** as the POSIX IPC mechanism.
+The project uses **POSIX Message Queues** as the IPC mechanism.
 
-## Why FIFO was selected
+## Why POSIX Message Queues were selected
 
-FIFO was selected because the simulator consists of separate processes
-such as UI, Core and Logger that need to communicate with each other.
+POSIX Message Queues were selected because the simulator
+consists of separate UI, Core and Logger processes that need
+to communicate with each other.
 
-The main reasons for selecting FIFO are:
+The main reasons are:
 
 1. **Simple communication**
-   - FIFO provides a simple way for one process to send data to another process.
+   - Processes can send and receive messages easily.
 
 2. **Suitable for separate processes**
-   - UI, Core and Logger run as independent processes, so they need an IPC mechanism
-     to exchange information.
+   - UI, Core and Logger run as independent processes.
 
-3. **Easy to implement**
-   - FIFO can be created and accessed using standard POSIX system calls.
+3. **Structured messages**
+   - Commands, responses and log messages can be sent
+     in a structured format.
 
-4. **Useful for logging**
-   - The Core process can send execution or error information to the Logger process
-     through the FIFO.
+4. **Reliable IPC**
+   - POSIX Message Queues provide a suitable mechanism
+     for communication between the processes.
 
-5. **Process separation**
-   - FIFO allows the processes to remain independent while still communicating.
+## Queues Used
 
-## Communication Flow
+- `UI_TO_CORE_QUEUE` – UI sends commands to Core.
+- `CORE_TO_UI_QUEUE` – Core sends responses to UI.
+- `CORE_TO_LOG_QUEUE` – Core sends log messages to Logger.
 
-UI → Core → Logger
+## Result
 
-The UI sends commands to the Core process.
-The Core processes the commands and sends relevant execution/error information
-to the Logger process through FIFO.
-
-## Conclusion
-
-FIFO was selected because it provides a simple and suitable POSIX IPC mechanism
-for communication between the independent processes in our multi-process simulator.
+IPC communication between UI, Core and Logger was
+tested successfully using POSIX Message Queues.
