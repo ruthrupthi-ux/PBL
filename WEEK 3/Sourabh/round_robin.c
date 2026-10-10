@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include "process.h"
 
@@ -187,4 +186,3 @@ void round_robin(Process p[], int n, int time_quantum)
             p[i].turnaround_time - p[i].burst_time;
     }
 }
-
