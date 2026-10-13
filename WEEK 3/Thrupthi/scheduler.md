@@ -107,7 +107,7 @@ gcc -Wall -Wextra -std=c11 \
 5. View the Gantt chart and scheduling results.
 6. Select `0` to exit.
 
-## 9. Team Responsibilities
+## 8. Team Responsibilities
 
 | Team Member | Responsibility |
 |---|---|
@@ -116,6 +116,6 @@ gcc -Wall -Wextra -std=c11 \
 | Ananya | Priority scheduling and performance metrics |
 | Sourabh | Round Robin scheduling and Gantt chart |
 
-## 10. Conclusion
+## 9. Conclusion
 
 The CPU Process Scheduling Simulator demonstrates the implementation of CPU scheduling algorithms in C. It helps users understand how different scheduling techniques manage process execution and evaluate their performance using scheduling metrics.
