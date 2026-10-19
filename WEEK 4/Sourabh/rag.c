@@ -176,6 +176,7 @@ void rag_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
     for (int j = 0; j < nr; ++j)
         resource_y[j] = node_y(j, nr, top, bottom, height / 2.0);
 
+    /* Draw only valid edges from current allocation/request state. */
     for (int i = 0; i < np; ++i) {
         if (s->status[i] == PROCESS_ABORTED ||
             s->status[i] == PROCESS_FINISHED)
@@ -213,6 +214,7 @@ void rag_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
             }
         }
     }
+
     for (int i = 0; i < np; ++i)
         draw_process(cr, s, i, process_x, process_y[i], process_radius);
 
@@ -228,4 +230,5 @@ void rag_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
 
     cairo_restore(cr);
 }
+
 
