@@ -1,7 +1,7 @@
 #ifndef RECOVERY_H
 #define RECOVERY_H
 
-#include "banker.h"
+#include "../Include/common.h"
 
 int recoverByProcessTermination(
     int process,

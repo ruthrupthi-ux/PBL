@@ -1,7 +1,7 @@
 #ifndef DEADLOCK_H
 #define DEADLOCK_H
 
-#include "banker.h"
+#include "../Include/common.h"
 
 int detectDeadlock(
     int processes,

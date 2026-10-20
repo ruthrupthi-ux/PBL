@@ -1,5 +1,9 @@
 #include "gui.h"
 #include "rag.h"
+#include "../Ranvil/deadlock.h"
+#include "../Ranvil/recovery.h"
+#include "../Thrupthi/resource_manager.h"
+#include "../Ananya /banker.h"
 
 #include <gtk/gtk.h>
 #include <stdio.h>
@@ -173,108 +177,163 @@ static gboolean safe_sequence(SystemState *s, int *sequence)
     return TRUE;
 }
 
+
 static void on_safety(GtkButton *button, gpointer data)
 {
     (void)button;
-    Gui *g = data;
-    int seq[MAX_PROCESSES];
 
-    if (!safe_sequence(g->s, seq)) {
-        set_status(g, "UNSAFE STATE: no safe sequence exists for the current allocation and totals.");
+    Gui *g = data;
+    SystemState *s = g->s;
+
+    BankerState banker = {0};
+    size_t sequence[BANKER_MAX_PROCESSES] = {0};
+    size_t sequence_length = 0;
+
+    banker.process_count = (size_t)s->process_count;
+    banker.resource_count = (size_t)s->resource_count;
+
+    recalculate(s);
+
+    for (int j = 0; j < s->resource_count; j++) {
+        banker.available[j] = s->available[j];
+    }
+
+    for (int i = 0; i < s->process_count; i++) {
+        for (int j = 0; j < s->resource_count; j++) {
+            banker.allocation[i][j] = s->allocation[i][j];
+            banker.maximum[i][j] = s->max[i][j];
+        }
+    }
+
+    if (!banker_calculate_need(&banker) ||
+        !banker_is_safe(&banker, sequence, &sequence_length)) {
+        set_status(g, "UNSAFE STATE: no safe sequence exists.");
         return;
     }
 
     char msg[256] = "SAFE STATE. Safe sequence: ";
-    for (int k = 0; k < g->s->process_count; ++k) {
+
+    for (size_t k = 0; k < sequence_length; k++) {
         char part[24];
-        snprintf(part, sizeof(part), "%sP%d", k == 0 ? "" : " -> ", seq[k]);
+        snprintf(part, sizeof(part), "%sP%zu",
+                 k == 0 ? "" : " -> ", sequence[k]);
         strncat(msg, part, sizeof(msg) - strlen(msg) - 1);
     }
+
     set_status(g, msg);
 }
 
 static void on_detect(GtkButton *button, gpointer data)
 {
     (void)button;
+
     Gui *g = data;
     SystemState *s = g->s;
-    int work[MAX_RESOURCES], finish[MAX_PROCESSES] = {0};
-    for (int j = 0; j < s->resource_count; ++j) work[j] = s->available[j];
-    for (int i = 0; i < s->process_count; ++i) {
-        int has_allocation = 0;
-        for (int j = 0; j < s->resource_count; ++j)
-            if (s->allocation[i][j] > 0) has_allocation = 1;
-        finish[i] = !has_allocation || s->status[i] == PROCESS_FINISHED ||
-                    s->status[i] == PROCESS_ABORTED;
-    }
-    int progress;
-    do {
-        progress = 0;
-        for (int i = 0; i < s->process_count; ++i) {
-            if (finish[i]) continue;
-            int can_finish = 1;
-            for (int j = 0; j < s->resource_count; ++j)
-                if (s->request[i][j] > work[j]) { can_finish = 0; break; }
-            if (can_finish) {
-                for (int j = 0; j < s->resource_count; ++j)
-                    work[j] += s->allocation[i][j];
-                finish[i] = 1;
-                progress = 1;
-            }
-        }
-    } while (progress);
+    int deadlocked[MAX_PROCESSES] = {0};
 
-    char msg[256] = "No deadlocked processes detected.";
-    int found = 0;
-    for (int i = 0; i < s->process_count; ++i) {
-        if (!finish[i]) {
-            if (!found) snprintf(msg, sizeof(msg), "Potential deadlock: ");
-            char part[20];
-            snprintf(part, sizeof(part), "P%d ", i);
-            strncat(msg, part, sizeof(msg) - strlen(msg) - 1);
+    recalculate(s);
+
+    int count = detectDeadlock(
+        s->process_count,
+        s->resource_count,
+        s->available,
+        s->allocation,
+        s->request,
+        deadlocked
+    );
+
+    for (int i = 0; i < s->process_count; i++) {
+        if (deadlocked[i]) {
             s->status[i] = PROCESS_DEADLOCKED;
-            found = 1;
         } else if (s->status[i] == PROCESS_DEADLOCKED) {
             s->status[i] = PROCESS_ACTIVE;
         }
     }
-    set_status(g, msg);
+
+    if (count == 0) {
+        set_status(g, "No deadlocked processes detected.");
+    } else {
+        char msg[256] = "Deadlocked processes: ";
+
+        for (int i = 0; i < s->process_count; i++) {
+            if (deadlocked[i]) {
+                char part[24];
+                snprintf(part, sizeof(part), "P%d ", i);
+                strncat(msg, part,
+                        sizeof(msg) - strlen(msg) - 1);
+            }
+        }
+
+        set_status(g, msg);
+    }
+
     refresh(g);
 }
+
 
 static void on_recover(GtkButton *button, gpointer data)
 {
     (void)button;
+
     Gui *g = data;
     SystemState *s = g->s;
-    int victim = -1, largest = -1;
-    for (int i = 0; i < s->process_count; ++i) {
-        if (s->status[i] == PROCESS_DEADLOCKED) {
+    int deadlocked[MAX_PROCESSES] = {0};
+
+    for (int i = 0; i < s->process_count; i++) {
+        deadlocked[i] = (s->status[i] == PROCESS_DEADLOCKED);
+    }
+
+    int victim = -1;
+    int largest = -1;
+
+    for (int i = 0; i < s->process_count; i++) {
+        if (deadlocked[i]) {
             int held = 0;
-            for (int j = 0; j < s->resource_count; ++j) held += s->allocation[i][j];
-            if (held > largest) { largest = held; victim = i; }
+
+            for (int j = 0; j < s->resource_count; j++) {
+                held += s->allocation[i][j];
+            }
+
+            if (held > largest) {
+                largest = held;
+                victim = i;
+            }
         }
     }
+
     if (victim < 0) {
         set_status(g, "No marked deadlocked process. Run Detect Deadlock first.");
         return;
     }
-    for (int j = 0; j < s->resource_count; ++j) {
-        s->allocation[victim][j] = 0;
+
+    if (!recoverByProcessTermination(
+            victim,
+            s->process_count,
+            s->resource_count,
+            s->allocation,
+            s->available,
+            deadlocked)) {
+        set_status(g, "Recovery failed.");
+        return;
+    }
+
+    s->status[victim] = PROCESS_ABORTED;
+
+    for (int j = 0; j < s->resource_count; j++) {
         s->request[victim][j] = 0;
     }
-    s->status[victim] = PROCESS_ABORTED;
-    recalculate(s);
 
-    on_detect(NULL, g);
+    recalculate(s);
 
     char msg[160];
     snprintf(msg, sizeof(msg),
              "Recovery complete: aborted P%d and released its resources.",
              victim);
+
     set_status(g, msg);
     refresh(g);
 }
+
 
 static void on_set_totals(GtkButton *button, gpointer data)
 {
