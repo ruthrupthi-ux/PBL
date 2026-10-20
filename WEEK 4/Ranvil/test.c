@@ -1,101 +1,54 @@
 #include <stdio.h>
 
-#include "banker.h"
 #include "deadlock.h"
 #include "recovery.h"
 
-#define PROCESSES 5
-#define RESOURCES 3
+#define PROCESSES 3
+#define RESOURCES 2
 
 int main() {
 
     int available[MAX_RESOURCES] = {
-        3, 3, 2
-    };
-
-    int maximum[MAX_PROCESSES][MAX_RESOURCES] = {
-
-        {7, 5, 3},
-        {3, 2, 2},
-        {9, 0, 2},
-        {2, 2, 2},
-        {4, 3, 3}
+        0, 0
     };
 
     int allocation[MAX_PROCESSES][MAX_RESOURCES] = {
 
-        {0, 1, 0},
-        {2, 0, 0},
-        {3, 0, 2},
-        {2, 1, 1},
-        {0, 0, 2}
+        {1, 0},
+        {0, 1},
+        {0, 0}
     };
 
-    int need[MAX_PROCESSES][MAX_RESOURCES];
+    int request[MAX_PROCESSES][MAX_RESOURCES] = {
 
-    int safeSequence[MAX_PROCESSES];
+        {0, 1},
+        {1, 0},
+        {0, 0}
+    };
+
+    int deadlocked[MAX_PROCESSES];
 
     printf("\n");
     printf("============================================\n");
-    printf("       MEMBER 3 DEADLOCK MODULE TEST\n");
+    printf("       DEADLOCK DETECTION & RECOVERY\n");
+    printf("              MEMBER 3 TEST\n");
     printf("============================================\n");
 
-    printf("\n[1] Calculating Need Matrix...\n");
+    printf("\n[1] INITIAL RESOURCE STATUS\n");
 
-    calculateNeed(
-        PROCESSES,
+    printAvailableResources(
         RESOURCES,
-        maximum,
-        allocation,
-        need
+        available
     );
 
-    printNeedMatrix(
-        PROCESSES,
-        RESOURCES,
-        need
-    );
-
-    printf("\n[2] Checking System Safety...\n");
-
-    if (isSafeState(
-            PROCESSES,
-            RESOURCES,
-            available,
-            allocation,
-            need,
-            safeSequence)) {
-
-        printf("\nSYSTEM STATUS: SAFE\n");
-
-        printf("Safe Sequence: ");
-
-        for (int i = 0; i < PROCESSES; i++) {
-
-            printf("P%d", safeSequence[i]);
-
-            if (i < PROCESSES - 1) {
-                printf(" -> ");
-            }
-        }
-
-        printf("\n");
-
-    } else {
-
-        printf("\nSYSTEM STATUS: UNSAFE\n");
-    }
-
-    printf("\n[3] Running Deadlock Detection...\n");
-
-    int deadlocked[MAX_PROCESSES];
+    printf("\n[2] RUNNING DEADLOCK DETECTION...\n");
 
     int deadlockCount = detectDeadlock(
         PROCESSES,
         RESOURCES,
         available,
         allocation,
-        need,
+        request,
         deadlocked
     );
 
@@ -105,45 +58,54 @@ int main() {
     );
 
     printf(
-        "\nNumber of deadlocked processes: %d\n",
+        "\nTotal deadlocked processes: %d\n",
         deadlockCount
     );
 
     if (deadlockCount > 0) {
 
-        printf("\n[4] Starting Recovery...\n");
+        printf("\n[3] STARTING DEADLOCK RECOVERY...\n");
 
-        for (int i = 0; i < PROCESSES; i++) {
-
-            if (deadlocked[i]) {
-
-                recoverByProcessTermination(
-                    i,
-                    PROCESSES,
-                    RESOURCES,
-                    allocation,
-                    available,
-                    deadlocked
-                );
-
-                break;
-            }
-        }
-
-    } else {
-
-        printf("\n[4] Recovery not required.\n");
+        recoverByProcessTermination(
+            0,
+            PROCESSES,
+            RESOURCES,
+            allocation,
+            available,
+            deadlocked
+        );
     }
 
-    printf("\n[5] Final Resource Status\n");
+    printf("\n[4] RESOURCE STATUS AFTER RECOVERY\n");
 
     printAvailableResources(
         RESOURCES,
         available
     );
 
+    printf("\n[5] RUNNING DEADLOCK DETECTION AGAIN...\n");
+
+    deadlockCount = detectDeadlock(
+        PROCESSES,
+        RESOURCES,
+        available,
+        allocation,
+        request,
+        deadlocked
+    );
+
+    printDeadlockedProcesses(
+        PROCESSES,
+        deadlocked
+    );
+
+    printf(
+        "\nRemaining deadlocked processes: %d\n",
+        deadlockCount
+    );
+
     printf("\n============================================\n");
-    printf("          TEST COMPLETED\n");
+    printf("              TEST COMPLETED\n");
     printf("============================================\n");
 
     return 0;
