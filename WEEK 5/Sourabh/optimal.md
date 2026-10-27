@@ -1,4 +1,4 @@
-# Member 3 – Optimal Page Replacement Algorithm
+# Optimal Page Replacement Algorithm
 
 ## 1. Objective
 Implement and test the Optimal Page Replacement Algorithm using C.
