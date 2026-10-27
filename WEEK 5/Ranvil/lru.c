@@ -1,11 +1,6 @@
 #include <stddef.h>
 #include "lru.h"
 
-/*
- * Simulates Least Recently Used (LRU) page replacement.
- * Returns 0 on success and -1 for invalid input.
- * Empty frames are represented by -1. Ratios are percentages.
- */
 int simulate_lru(const int pages[], int n, int frame_count,
                  SimulationResult *result)
 {
@@ -32,7 +27,6 @@ int simulate_lru(const int pages[], int n, int frame_count,
         int hit_index = -1;
         int empty_index = -1;
 
-        /* Start with the previous step's frames, or empty frames at step 0. */
         if (i == 0) {
             for (j = 0; j < frame_count; ++j) {
                 result->steps[i].frames[j] = -1;
@@ -68,7 +62,6 @@ int simulate_lru(const int pages[], int n, int frame_count,
             if (empty_index != -1) {
                 replace_index = empty_index;
             } else {
-                /* The smallest last-used index is the least recently used page. */
                 replace_index = 0;
                 for (j = 1; j < frame_count; ++j) {
                     if (last_used[j] < last_used[replace_index]) {
@@ -80,8 +73,6 @@ int simulate_lru(const int pages[], int n, int frame_count,
             result->steps[i].frames[replace_index] = pages[i];
             last_used[replace_index] = i;
         }
-
-        /* Make unused slots deterministic for GUI display and testing. */
         for (j = frame_count; j < MAX_FRAMES; ++j) {
             result->steps[i].frames[j] = -1;
         }
