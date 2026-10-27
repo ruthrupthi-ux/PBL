@@ -15,7 +15,6 @@ static void test_project_sample(void)
     assert(result.hit_ratio > 19.99 && result.hit_ratio < 20.01);
     assert(result.fault_ratio > 79.99 && result.fault_ratio < 80.01);
 
-    /* Each step must retain the requested page and a valid hit/fault flag. */
     for (i = 0; i < 10; ++i) {
         assert(result.steps[i].page == pages[i]);
         assert(result.steps[i].hit == 0 || result.steps[i].hit == 1);
