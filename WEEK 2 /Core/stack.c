@@ -1,67 +1,68 @@
+
 #include <stdio.h>
 #include <string.h>
+#include "core.h"
 
-#define SIZE 10
-
-typedef struct
+void stack_init(Stack *stack)
 {
-    int stack[SIZE];
-    int top;
-    int running;
-} Stack;
-
-void stack_init(Stack *s)
-{
-    s->top = -1;
-    s->running = 1;
+    stack->top=-1;
+    stack->running=1;
 }
 
-void execute_stack(Stack *s, char instruction[])
+int execute_stack(Stack *stack,const char *instruction,char *output,size_t output_size)
 {
-    char operation[10];
+    char operation[20];
     int value;
 
-    sscanf(instruction, "%s %d", operation, &value);
-
-    if (strcmp(operation, "PUSH") == 0)
+    if(sscanf(instruction,"%19s",operation)!=1)
     {
-        if (s->top < SIZE - 1)
-        {
-            s->stack[++s->top] = value;
-            printf("PUSH: %d\n", value);
-        }
-        else
-        {
-            printf("Stack Overflow\n");
-        }
+        snprintf(output,output_size,"Empty instruction");
+        return 0;
     }
 
-    else if (strcmp(operation, "POP") == 0)
+    if(!strcmp(operation,"PUSH"))
     {
-        if (s->top >= 0)
+        if(sscanf(instruction,"%19s %d",operation,&value)!=2)
         {
-            printf("POP: %d\n", s->stack[s->top--]);
+            snprintf(output,output_size,"Invalid PUSH instruction");
+            return 0;
         }
-        else
-        {
-            printf("Stack Underflow\n");
-        }
-    }
 
-    else if (strcmp(operation, "SPEEK") == 0)
+        if(stack->top>=SIZE-1)
+        {
+            snprintf(output,output_size,"Stack overflow");
+            return 0;
+        }
+
+        stack->stack[++stack->top]=value;
+        snprintf(output,output_size,"Pushed %d",value);
+    }
+    else if(!strcmp(operation,"POP"))
     {
-        if (s->top >= 0)
+        if(stack->top<0)
         {
-            printf("Stack Top = %d\n", s->stack[s->top]);
+            snprintf(output,output_size,"Stack underflow");
+            return 0;
         }
-        else
-        {
-            printf("Stack is empty\n");
-        }
-    }
 
+        value=stack->stack[stack->top--];
+        snprintf(output,output_size,"Popped %d",value);
+    }
+    else if(!strcmp(operation,"SPEEK"))
+    {
+        if(stack->top<0)
+        {
+            snprintf(output,output_size,"Stack is empty");
+            return 0;
+        }
+
+        snprintf(output,output_size,"Top element = %d",stack->stack[stack->top]);
+    }
     else
     {
-        printf("Invalid stack instruction\n");
+        snprintf(output,output_size,"Unknown stack instruction");
+        return 0;
     }
+
+    return 1;
 }
