@@ -186,22 +186,26 @@ else {
 }
 }
 else if (choice == 3) {
-    if (process_id == 0)
-        display_error("No process available.");
-    else
-        display_status(process_id, process_status);
-}
-else if (choice == 4) {
-    if (process_id == 0)
-        display_error("No process has been created.");
-    else
-        display_result(process_id, latest_result);
-}
+            if (process_id == 0)
+                display_error("No process available.");
+            else
+                display_status(process_id, process_status);
+        }
+        else if (choice == 4) {
+            if (process_id == 0)
+                display_error("No process has been created.");
+            else
+                display_result(process_id, latest_result);
+        }
+        else if (choice == 5) {
+            printf("\\nExiting Multi-Process Simulator...\\n");
+            break;
+        }
         else {
             display_error("Invalid choice. Please select 1-5.");
         }
     }
     close(to_core);
-    close(from_core);
+close(from_core);
     return 0;
 }
