@@ -1,72 +1,76 @@
 #include <stdio.h>
 #include <string.h>
+#include "core.h"
 
-#define SIZE 10
-
-typedef struct
+void queue_init(Queue *queue)
 {
-    int queue[SIZE];
-    int front;
-    int rear;
-    int running;
-} Queue;
-
-void queue_init(Queue *q)
-{
-    q->front = 0;
-    q->rear = -1;
-    q->running = 1;
+    queue->front=0;
+    queue->rear=-1;
+    queue->running=1;
 }
 
-void execute_queue(Queue *q, char instruction[])
+int execute_queue(Queue *queue,const char *instruction,char *output,size_t output_size)
 {
-    char operation[10];
+    char operation[20];
     int value;
 
-    sscanf(instruction, "%s %d", operation, &value);
-
-    if (strcmp(operation, "ENQUEUE") == 0)
+    if(sscanf(instruction,"%19s",operation)!=1)
     {
-        if (q->rear < SIZE - 1)
-        {
-            q->rear++;
-            q->queue[q->rear] = value;
-
-            printf("ENQUEUE: %d\n", value);
-        }
-        else
-        {
-            printf("Queue Overflow\n");
-        }
+        snprintf(output,output_size,"Empty instruction");
+        return 0;
     }
 
-    else if (strcmp(operation, "DEQUEUE") == 0)
+    if(!strcmp(operation,"ENQUEUE"))
     {
-        if (q->front <= q->rear)
+        if(sscanf(instruction,"%19s %d",operation,&value)!=2)
         {
-            printf("DEQUEUE: %d\n", q->queue[q->front]);
-            q->front++;
+            snprintf(output,output_size,"Invalid ENQUEUE instruction");
+            return 0;
         }
-        else
+
+        if(queue->rear>=SIZE-1)
         {
-            printf("Queue Underflow\n");
+            snprintf(output,output_size,"Queue overflow");
+            return 0;
+        }
+
+        queue->queue[++queue->rear]=value;
+        snprintf(output,output_size,"Enqueued %d",value);
+    }
+    else if(!strcmp(operation,"DEQUEUE"))
+    {
+        if(queue->front>queue->rear)
+        {
+            snprintf(output,output_size,"Queue is empty");
+            return 0;
+        }
+
+        value=queue->queue[queue->front++];
+        snprintf(output,output_size,"Dequeued %d",value);
+
+        if(queue->front>queue->rear)
+        {
+            queue->front=0;
+            queue->rear=-1;
         }
     }
-
-    else if (strcmp(operation, "QPEEK") == 0)
+    else if(!strcmp(operation,"QPEEK"))
     {
-        if (q->front <= q->rear)
+        if(queue->front>queue->rear)
         {
-            printf("Queue Front = %d\n", q->queue[q->front]);
+            snprintf(output,output_size,"Queue is empty");
+            return 0;
         }
-        else
-        {
-            printf("Queue is empty\n");
-        }
-    }
 
+        snprintf(output,output_size,"Front element = %d",queue->queue[queue->front]);
+    }
     else
     {
-        printf("Invalid queue instruction\n");
+        snprintf(output,output_size,"Unknown queue instruction");
+        return 0;
     }
+
+    return 1;
 }
+
+
