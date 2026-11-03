@@ -1,75 +1,143 @@
+
+
+
+
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <sys/stat.h>
 #include <string.h>
 #include <mqueue.h>
+#include <time.h>
+#include <fcntl.h>
+#include <errno.h>
+
 #include "ipc_common.h"
 
-#define LOG_DIR "logs"
-#define LOG_FILE "logs/simulator.log"
 
-static void write_log(const char *level, const char *message)
+/* Get current date and time */
+void get_time(char *buffer, int size)
 {
-    FILE *file;
-    time_t now;
-    struct tm *local_time;
-    char timestamp[32];
+    time_t now = time(NULL);
+    struct tm time_info;
 
-    mkdir(LOG_DIR, 0755);
-
-    file = fopen(LOG_FILE, "a");
-    if (file == NULL) {
-        perror("LOGGER: Unable to open log file");
+    if (localtime_r(&now, &time_info) == NULL)
+    {
+        snprintf(buffer, size, "Unknown time");
         return;
     }
 
-    now = time(NULL);
-    local_time = localtime(&now);
+    strftime(buffer, size, "%Y-%m-%d %H:%M:%S",
+             &time_info);
+}
 
-    if (local_time != NULL)
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", local_time);
-    else
-        snprintf(timestamp, sizeof(timestamp), "unknown-time");
+/* Write messages into log files */
+void write_log(const char *filename, const char *message)
+{
+    FILE *file;
+    char time_buffer[30];
 
-    fprintf(file, "%s | %s | %s\n", timestamp, level, message);
+    file = fopen(filename, "a");
+
+    if (file == NULL)
+    {
+        perror("Logger: unable to open log file");
+        return;
+    }
+
+    get_time(time_buffer, sizeof(time_buffer));
+
+    fprintf(file, "[%s] %s\n", time_buffer, message);
+
     fclose(file);
 }
 
+/* Main Logger Process */
 int main(void)
 {
-    mqd_t from_core = mq_open(CORE_TO_LOG_QUEUE, O_RDONLY);
-    if (from_core == (mqd_t)-1) {
-        perror("LOGGER: unable to open IPC queue");
-        return 1;
+    mqd_t log_queue;
+    LogMessage log;
+    ssize_t bytes_received;
+
+    printf("========================================\n");
+    printf("       STUDENT 3: LOGGING PROCESS\n");
+    printf("========================================\n");
+
+    /* Open Core-to-Logger POSIX message queue */
+    log_queue = mq_open(CORE_TO_LOG_QUEUE, O_RDONLY);
+
+    if (log_queue == (mqd_t)-1)
+    {
+        perror("Logger: unable to open message queue");
+        return EXIT_FAILURE;
     }
 
-    printf("LOGGER PROCESS STARTED\n");
-    printf("Waiting for events from Core...\n");
+    printf("Logger connected to message queue.\n");
+    printf("Logger waiting for messages from Core...\n");
 
-    LogMessage log;
+    while (1)
+    {
+        memset(&log, 0, sizeof(LogMessage));
 
-    while (1) {
-        if (mq_receive(from_core, (char *)&log, sizeof(log), NULL) == -1) {
-            perror("LOGGER: mq_receive");
+        /* Receive message from Core */
+        bytes_received = mq_receive(
+            log_queue,
+            (char *)&log,
+            sizeof(LogMessage),
+            NULL
+        );
+
+        if (bytes_received == -1)
+        {
+            if (errno == EINTR)
+                continue;
+
+            perror("Logger: mq_receive");
             break;
         }
 
-        const char *level = "INFO";
-        if (log.level == 1) level = "WARNING";
-        else if (log.level == 2) level = "ERROR";
+        /* Validate received message size */
+        if (bytes_received != sizeof(LogMessage))
+        {
+            fprintf(stderr,
+                    "Logger: invalid message size received.\n");
+            continue;
+        }
 
-        char message[IPC_TEXT_SIZE + 64];
-        snprintf(message, sizeof(message), "Process %d: %s",
-                 log.process_id, log.message);
+        /* Ensure message is null-terminated */
+        log.message[IPC_TEXT_SIZE - 1] = '\0';
 
-        write_log(level, message);
-        printf("[LOGGER] %s | %s\n", level, message);
+        printf("Logger received [PID: %d]: %s\n",
+               log.process_id, log.message);
 
-        if (strstr(log.message, "shutdown request") != NULL)
+        /* ERROR messages go to error.log */
+        if (log.level == 2)
+        {
+            write_log("error.log", log.message);
+        }
+        else
+        {
+            /* Normal messages go to execution.log */
+            write_log("execution.log", log.message);
+        }
+
+        /* Check shutdown request */
+        if (strcmp(log.message,
+                   "Core process received shutdown request.") == 0)
+        {
+            printf("Logging process stopping...\n");
             break;
+        }
     }
 
-    mq_close(from_core);
-    return 0;
+    /* Close message queue */
+    if (mq_close(log_queue) == -1)
+    {
+        perror("Logger: mq_close");
+        return EXIT_FAILURE;
+    }
+
+    printf("Logs saved successfully.\n");
+
+    return EXIT_SUCCESS;
 }

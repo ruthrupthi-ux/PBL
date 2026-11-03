@@ -1,54 +1,65 @@
+
 #include <stdio.h>
 #include <string.h>
+#include "core.h"
 
-#define SIZE 10
-
-typedef struct
+void memory_init(Memory *memory)
 {
-    int memory[SIZE];
-    int running;
-} Memory;
+    for(int i=0;i<SIZE;i++)
+        memory->memory[i]=0;
 
-void memory_init(Memory *mem)
-{
-    int i;
-
-    for (i = 0; i < SIZE; i++)
-        mem->memory[i] = 0;
-
-    mem->running = 1;
+    memory->running=1;
 }
 
-void execute_memory(Memory *mem, char instruction[])
+int execute_memory(Memory *memory,const char *instruction,char *output,size_t output_size)
 {
-    char operation[10];
-    int address, value;
+    char operation[20];
+    int index,value;
 
-    printf("FETCH: %s\n", instruction);
-
-    sscanf(instruction, "%s %d %d",
-           operation, &address, &value);
-
-    if (strcmp(operation, "STORE") == 0)
+    if(sscanf(instruction,"%19s",operation)!=1)
     {
-        if (address >= 0 && address < SIZE)
+        snprintf(output,output_size,"Empty instruction");
+        return 0;
+    }
+
+    if(!strcmp(operation,"STORE"))
+    {
+        if(sscanf(instruction,"%19s %d %d",operation,&index,&value)!=3)
         {
-            mem->memory[address] = value;
-            printf("Memory[%d] = %d\n", address, value);
+            snprintf(output,output_size,"Invalid STORE instruction");
+            return 0;
         }
-        else
-            printf("Invalid memory address\n");
-    }
 
-    else if (strcmp(operation, "READ") == 0)
+        if(index<0 || index>=SIZE)
+        {
+            snprintf(output,output_size,"Memory index out of range");
+            return 0;
+        }
+
+        memory->memory[index]=value;
+        snprintf(output,output_size,"Stored %d at memory[%d]",value,index);
+    }
+    else if(!strcmp(operation,"READ"))
     {
-        if (address >= 0 && address < SIZE)
-            printf("Memory[%d] = %d\n",
-                   address, mem->memory[address]);
-        else
-            printf("Invalid memory address\n");
+        if(sscanf(instruction,"%19s %d",operation,&index)!=2)
+        {
+            snprintf(output,output_size,"Invalid READ instruction");
+            return 0;
+        }
+
+        if(index<0 || index>=SIZE)
+        {
+            snprintf(output,output_size,"Memory index out of range");
+            return 0;
+        }
+
+        snprintf(output,output_size,"memory[%d] = %d",index,memory->memory[index]);
+    }
+    else
+    {
+        snprintf(output,output_size,"Unknown memory instruction");
+        return 0;
     }
 
-    else
-        printf("Invalid memory instruction\n");
+    return 1;
 }

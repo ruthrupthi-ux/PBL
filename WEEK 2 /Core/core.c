@@ -1,123 +1,71 @@
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
+#include <unistd.h>
 #include <mqueue.h>
+#include "core.h"
 #include "ipc_common.h"
 
-#include "cpu.c"
-#include "memory.c"
-#include "stack.c"
-#include "queue.c"
-
-static void send_response(mqd_t ui_queue, int process_id, int status, const char *message)
-{
-    CoreResponse response = {0};
-    response.process_id = process_id;
-    response.status = status;
-    strncpy(response.message, message, IPC_TEXT_SIZE - 1);
-
-    if (mq_send(ui_queue, (const char *)&response, sizeof(response), 0) == -1)
-        perror("CORE: unable to send response to UI");
-}
-
-static void send_log(mqd_t log_queue, int process_id, int level, const char *message)
-{
-    LogMessage log = {0};
-    log.process_id = process_id;
-    log.level = level;
-    strncpy(log.message, message, IPC_TEXT_SIZE - 1);
-
-    if (mq_send(log_queue, (const char *)&log, sizeof(log), 0) == -1)
-        perror("CORE: unable to send log");
-}
-
-int main(void)
-{
-    CPU cpu;
-    Memory mem;
-    Stack stack;
-    Queue queue;
-
-    cpu_init(&cpu);
-    memory_init(&mem);
-    stack_init(&stack);
-    queue_init(&queue);
-
-    mqd_t from_ui = mq_open(UI_TO_CORE_QUEUE, O_RDONLY);
-    mqd_t to_ui = mq_open(CORE_TO_UI_QUEUE, O_WRONLY);
-    mqd_t to_log = mq_open(CORE_TO_LOG_QUEUE, O_WRONLY);
-
-    if (from_ui == (mqd_t)-1 || to_ui == (mqd_t)-1 || to_log == (mqd_t)-1) {
-        perror("CORE: unable to open IPC queues");
-        return 1;
+static int read_full(int fd, void *buffer, size_t size) {
+    size_t total=0; char *p=(char *)buffer;
+    while(total<size) {
+        ssize_t n=read(fd,p+total,size-total);
+        if(n==0) return 0;
+        if(n<0) { if(errno==EINTR) continue; return -1; }
+        total+=(size_t)n;
     }
-
-    printf("CORE PROCESS STARTED\n");
-    printf("Waiting for instructions from UI...\n");
-
-    UIMessage msg;
-
-    while (1) {
-        if (mq_receive(from_ui, (char *)&msg, sizeof(msg), NULL) == -1) {
-            perror("CORE: mq_receive");
+    return 1;
+}
+static int write_full(int fd,const void *buffer,size_t size) {
+    size_t total=0; const char *p=(const char *)buffer;
+    while(total<size) {
+        ssize_t n=write(fd,p+total,size-total);
+        if(n<0) { if(errno==EINTR) continue; return 0; }
+        if(n==0) return 0;
+        total+=(size_t)n;
+    }
+    return 1;
+}
+static int execute_instruction(const char *instruction,CPU *cpu,Memory *memory,Stack *stack,Queue *queue,char *output,size_t output_size) {
+    char operation[20];
+    if(sscanf(instruction,"%19s",operation)!=1) { snprintf(output,output_size,"Empty instruction"); return 0; }
+    if(!strcmp(operation,"LOAD")||!strcmp(operation,"ADD")||!strcmp(operation,"SUB")||!strcmp(operation,"MUL")||!strcmp(operation,"DIV")||!strcmp(operation,"PRINT")||!strcmp(operation,"HALT"))
+        return cpu_execute(cpu,instruction,output,output_size);
+    if(!strcmp(operation,"STORE")||!strcmp(operation,"READ"))
+        return execute_memory(memory,instruction,output,output_size);
+    if(!strcmp(operation,"PUSH")||!strcmp(operation,"POP")||!strcmp(operation,"SPEEK"))
+        return execute_stack(stack,instruction,output,output_size);
+    if(!strcmp(operation,"ENQUEUE")||!strcmp(operation,"DEQUEUE")||!strcmp(operation,"QPEEK"))
+        return execute_queue(queue,instruction,output,output_size);
+    snprintf(output,output_size,"Unknown instruction"); return 0;
+}
+int run_core(int ui_read_fd,int ui_write_fd,mqd_t logger_queue) {
+    CPU cpu; Memory memory; Stack stack; Queue queue; UIMessage request;
+    CoreResponse response; LogMessage log; char output[IPC_TEXT_SIZE]; int rr;
+    cpu_init(&cpu); memory_init(&memory); stack_init(&stack); queue_init(&queue);
+    for(;;) {
+        rr=read_full(ui_read_fd,&request,sizeof(request));
+        if(rr<=0) break;
+        request.instruction[IPC_TEXT_SIZE-1] = '\0';
+        memset(&response,0,sizeof(response)); memset(&log,0,sizeof(log)); memset(output,0,sizeof(output));
+        response.process_id=request.process_id; log.process_id=request.process_id;
+        response.status=execute_instruction(request.instruction,&cpu,&memory,&stack,&queue,output,sizeof(output));
+        snprintf(response.message,sizeof(response.message),"%s",output);
+        log.level=response.status?1:2;
+        snprintf(log.message,sizeof(log.message),"Instruction: %.100s | Result: %.120s",request.instruction,output);
+        if(!write_full(ui_write_fd,&response,sizeof(response))) break;
+        if (mq_send(logger_queue, (const char *)&log, sizeof(log), 0) == -1) {
+            perror("Core: mq_send");
             break;
-        }
-
-        if (msg.command == 2) {
-            send_log(to_log, msg.process_id, 0, "Core process received shutdown request.");
-            break;
-        }
-
-        char operation[20] = {0};
-        if (sscanf(msg.instruction, "%19s", operation) != 1) {
-            send_response(to_ui, msg.process_id, 1, "Empty instruction.");
-            send_log(to_log, msg.process_id, 2, "Empty instruction received.");
-            continue;
-        }
-
-        int known = 0;
-        if (!strcmp(operation, "LOAD") || !strcmp(operation, "ADD") ||
-            !strcmp(operation, "SUB") || !strcmp(operation, "MUL") ||
-            !strcmp(operation, "DIV") || !strcmp(operation, "PRINT")) {
-            known = 1;
-            execute(&cpu, msg.instruction);
-        }
-        else if (!strcmp(operation, "STORE") || !strcmp(operation, "READ")) {
-            known = 1;
-            execute_memory(&mem, msg.instruction);
-        }
-        else if (!strcmp(operation, "PUSH") || !strcmp(operation, "POP") ||
-                 !strcmp(operation, "SPEEK")) {
-            known = 1;
-            execute_stack(&stack, msg.instruction);
-        }
-        else if (!strcmp(operation, "ENQUEUE") || !strcmp(operation, "DEQUEUE") ||
-                 !strcmp(operation, "QPEEK")) {
-            known = 1;
-            execute_queue(&queue, msg.instruction);
-        }
-        else if (!strcmp(operation, "HALT")) {
-            known = 1;
-            printf("CORE PROCESS HALTED\n");
-            send_response(to_ui, msg.process_id, 0, "HALT received. Core is stopping.");
-            send_log(to_log, msg.process_id, 0, "HALT instruction received.");
-            send_log(to_log, msg.process_id, 0, "Core shutdown request.");
-            break;
-        }
-
-        if (known) {
-            char result[IPC_TEXT_SIZE];
-            snprintf(result, sizeof(result), "Instruction executed: %s", msg.instruction);
-            send_response(to_ui, msg.process_id, 0, result);
-            send_log(to_log, msg.process_id, 0, result);
-        } else {
-            send_response(to_ui, msg.process_id, 1, "Invalid instruction.");
-            send_log(to_log, msg.process_id, 2, "Invalid instruction received.");
         }
     }
-
-    mq_close(from_ui);
-    mq_close(to_ui);
-    mq_close(to_log);
+    memset(&log, 0, sizeof(log));
+    log.level = 1;
+    snprintf(log.message, sizeof(log.message), "Core process received shutdown request.");
+    if (mq_send(logger_queue, (const char *)&log, sizeof(log), 0) == -1)
+        perror("Core: shutdown mq_send");
+    close(ui_read_fd);
+    close(ui_write_fd);
     return 0;
 }
+
