@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <mqueue.h>
 #include "core.h"
 #include "ipc_common.h"
 
@@ -38,7 +39,7 @@ static int execute_instruction(const char *instruction,CPU *cpu,Memory *memory,S
         return execute_queue(queue,instruction,output,output_size);
     snprintf(output,output_size,"Unknown instruction"); return 0;
 }
-int run_core(int ui_read_fd,int ui_write_fd,int logger_write_fd) {
+int run_core(int ui_read_fd,int ui_write_fd,mqd_t logger_queue) {
     CPU cpu; Memory memory; Stack stack; Queue queue; UIMessage request;
     CoreResponse response; LogMessage log; char output[IPC_TEXT_SIZE]; int rr;
     cpu_init(&cpu); memory_init(&memory); stack_init(&stack); queue_init(&queue);
@@ -53,10 +54,18 @@ int run_core(int ui_read_fd,int ui_write_fd,int logger_write_fd) {
         log.level=response.status?1:2;
         snprintf(log.message,sizeof(log.message),"Instruction: %.100s | Result: %.120s",request.instruction,output);
         if(!write_full(ui_write_fd,&response,sizeof(response))) break;
-        if(!write_full(logger_write_fd,&log,sizeof(log))) break;
-        if(!strcmp(request.instruction,"HALT")) break;
+        if (mq_send(logger_queue, (const char *)&log, sizeof(log), 0) == -1) {
+            perror("Core: mq_send");
+            break;
+        }
     }
-    close(ui_read_fd); close(ui_write_fd); close(logger_write_fd);
+    memset(&log, 0, sizeof(log));
+    log.level = 1;
+    snprintf(log.message, sizeof(log.message), "Core process received shutdown request.");
+    if (mq_send(logger_queue, (const char *)&log, sizeof(log), 0) == -1)
+        perror("Core: shutdown mq_send");
+    close(ui_read_fd);
+    close(ui_write_fd);
     return 0;
 }
 

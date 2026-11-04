@@ -14,10 +14,6 @@
 
 #include "ipc_common.h"
 
-/* Core-to-Logger message queue */
-#ifndef CORE_TO_LOG_QUEUE
-#define CORE_TO_LOG_QUEUE "/core_to_log_queue"
-#endif
 
 /* Get current date and time */
 void get_time(char *buffer, int size)

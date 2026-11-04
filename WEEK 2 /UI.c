@@ -8,8 +8,6 @@
 #include "ipc_common.h"
 
 #define MAX_INPUT 100
-#define UI_TO_CORE_FIFO "/tmp/ui_to_core_fifo"
-#define CORE_TO_UI_FIFO "/tmp/core_to_ui_fifo"
 
 int get_integer(const char *message)
 {
@@ -135,6 +133,8 @@ int main(void)
     int priority = 0;
     char instruction[IPC_TEXT_SIZE];
     CoreResponse response;
+    char latest_result[IPC_TEXT_SIZE] = "No instruction executed yet.";
+    char process_status[32] = "READY";
     printf("\n========================================\n");
     printf("     MULTI-PROCESS SIMULATOR UI\n");
     printf("          STUDENT 1 - UI\n");
@@ -162,11 +162,7 @@ int main(void)
             UIMessage msg = {0};
             msg.process_id = process_id;
             msg.command = 1;
-            strncpy(
-                msg.instruction,
-                instruction,
-                IPC_TEXT_SIZE - 1
-            );
+            snprintf(msg.instruction, sizeof(msg.instruction), "%s", instruction);
             if (write_full(to_core, &msg, sizeof(msg)) == -1) {
                 perror("UI: FIFO write failed");
                 continue;
@@ -177,32 +173,32 @@ int main(void)
                 perror("UI: FIFO read failed");
                 break;
             }
-            if (response.status != 0) {
-                display_status(process_id, "COMPLETED");
-                display_result(process_id, response.message);
-            }
-            else {
-                display_status(process_id, "ERROR");
-                display_error(response.message);
-            }
-        }
-        else if (choice == 3) {
+            snprintf(latest_result, sizeof(latest_result), "%s", response.message);
+           if (response.status != 0) {
+    snprintf(process_status, sizeof(process_status), "COMPLETED");
+    display_status(process_id, "COMPLETED");
+    display_result(process_id, response.message);
+}
+else {
+    snprintf(process_status, sizeof(process_status), "ERROR");
+    display_status(process_id, "ERROR");
+    display_error(response.message);
+}
+}
+else if (choice == 3) {
             if (process_id == 0)
                 display_error("No process available.");
             else
-                display_status(process_id, "READY");
+                display_status(process_id, process_status);
         }
         else if (choice == 4) {
             if (process_id == 0)
                 display_error("No process has been created.");
             else
-                display_result(
-                    process_id,
-                    "Latest result is displayed after execution."
-                );
+                display_result(process_id, latest_result);
         }
         else if (choice == 5) {
-            printf("\nExiting Multi-Process Simulator...\n");
+            printf("\\nExiting Multi-Process Simulator...\\n");
             break;
         }
         else {
@@ -210,6 +206,6 @@ int main(void)
         }
     }
     close(to_core);
-    close(from_core);
+close(from_core);
     return 0;
 }
